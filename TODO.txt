@@ -1,0 +1,64 @@
+If you're reading this, congratulations!!! You found an unintended easter egg! (I simply "forgot" to remove this note from my release ^_^; Enjoy!  -stux )
+
+Here is my TODO list/development notes:
+* finish spanish translations?
+* figure out what to do with preferences: follow new or old settings?
+	* pref("extensions.tabutils.disableTabMoveAnimation", false); // <--- this needs a UI element!
+	* Find a way to toggle between old and new locked styles (red outline vs. locked icon), add UI element
+	* what do "extensions.tabutils.shortcut.key_*" do?
+* check other defaults:
+	pref("extensions.tabutils.shortcut.tuClipboardKeyset.disabled", true);
+	pref("extensions.tabutils.closeButtons", 10);
+	pref("extensions.tabutils.disableTabMoveAnimation", false);
+	pref("extensions.tabutils.mouseHoverSelectDelay", 250);
+* encoding: make sure all files are UTF-8 with BOM
+* other
+	tab-utils.mt.js: 
+		        [/.*effects == "move"[\s\S]*?(?=var (newIndex|scrollRect|rect))/, ""] // needs fix
+	bookmarkProperties.xul:
+		/* commented out code */
+	tabutils.css
+		#undoclosetab-button  <--- old vs. new
+		I need to understand the syntax to verify everything! :-/
+	preferences.xul
+		There are several changed "suggest=" values, analyze.
+		I'm setting those from the menu context to their new values.
+	tabutils.xml
+		what does xul:toolbarbutton refer to? Is it the button on the far right after tabs?  Might be more for pinned tabs.
+		check out changes to '<xul:toolbarbutton class="scrollbutton-up"' (and "down")
+* Bug fixes:
+	* Restore counter to grouped tabs; right now it only appears when a group is expanded and then collapsed. 
+	  See functions (tabutils-st.js):
+		gBrowser.collapseStack = function collapseStack(aTab, aForce) //new
+		gBrowser.collapseGroup = function collapseGroup(aTab) 		  //old
+	* Has dragging groups across windows been fixed? (TEST)
+	* Duplicate tab within a tab-group should keep the tab within that same group!
+	* Fix how tab groups move! (Still an issue)
+		* sometimes moving a tab or group to the left of an existing group moves the tab or group to the other group's right
+		* sometimes tabs are lost! or de-grouped.
+		* check to see if moving inactive tabs or groups to another window still doesn't work right
+	* Fix how ctrl-tab works on this version (more specifically repeated ctrl-tab: does it load the tab immediately or when ctrl is released?); make configurable
+* NEW Features (wishlist):
+	* "Unload Tab" Menu option (unloads a tab from memory and makes it grayed out)
+	* Some Hidden options? (I want to add something in addition to "Tab Open" and "Tab Close" in 1st pane but i can't remember what)
+	* Allow selecting how Ctrl-tab works (and implement correctly)
+
+		
+		
+*WORK DONE:
+	* Removed "Advanced" tab 
+	* reverted "Donate" feature back to simple "Apply" behavior
+	* used new "mouse hover" options
+	* used new Appearance/"Menus" listing 
+	* kept "Tabs"/"Tab Opening"/"Focus new tabs from:"/"Foreign Links" button and functionality
+		preferences.xul: <checkbox preference="loadForeignInBackground" label="&loadForeignInBackground.label;" observes="b.loadAllInBackgroundOrForeground"/>
+		tabutils.js:   TU_hookCode("nsBrowserAccess.prototype.openURI", '"browser.tabs.loadDivertedInBackground"', 'isExternal ? "extensions.tabutils.loadForeignInBackground" : $&', "g");
+		TODO: verify functionality!!!
+			Look at line in old code: case "browser.link.open_external": // Bug 509664 [Fx10]
+	* kept "Tabs"/"Tab Opening"/"When loading new non-empty tabs, don't focus cursor on address bar" option
+		preferences.xul: <checkbox preference="markNewAsBlank" label="&markNewAsBlank.label;"/>
+		Seems like the code for this option was kept (tabutils.js): 
+			  TU_hookCode("isBlankPageURL", "aURL == BROWSER_NEW_TAB_URL", "$& && TU_getPref('extensions.tabutils.markNewAsBlank', true)");
+	* Restored tab highlighting preferences for [locked] and [protected] tabs:
+		added to defaults/preferences/prefs.js: pref("extensions.tabutils.selector.locked", '[locked]');
+	

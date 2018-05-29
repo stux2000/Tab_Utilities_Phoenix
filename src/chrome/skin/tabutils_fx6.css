@@ -1,0 +1,20 @@
+/* Tab Stacking */
+window[v6="true"] .tabbrowser-tab[group-selected]:not([group-counter="1"])[group-collapsed] .tab-twisty {
+  list-style-image: url("chrome://global/skin/tree/twisty-clsd.png");
+}
+
+window[v6="true"] .tabbrowser-tab[group-first]:not([group-last]):not([group-collapsed]) .tab-twisty {
+  list-style-image: url("chrome://global/skin/tree/twisty-open.png");
+}
+
+/* Toolbar buttons */
+window[v6="true"] #closetab-button {
+  list-style-image: url("chrome://global/skin/icons/close.png");
+}
+
+/* Statusbar buttons */
+window[v6="true"] #statusbar-openintab,
+window[v6="true"] #statusbar-loadinbackground,
+window[v6="true"] #statusbar-loadinforeground {
+  list-style-image: url("resource:///chrome/browser/skin/classic/browser/Toolbar.png");
+}
