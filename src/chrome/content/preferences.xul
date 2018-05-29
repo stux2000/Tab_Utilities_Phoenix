@@ -19,8 +19,8 @@
 
 <prefwindow id="tabutils-preferences"
             title="&prefwindow.title;"
-            helpURI="https://addons.mozilla.org/firefox/addon/tab-utilities-phoenix/"
-            donateURI="https://addons.mozilla.org/firefox/addon/tab-utilities-phoenix/developers"
+            helpURI="http://addons.palemoon.org/addon/tab-utilities-phoenix/"
+            donateURI="http://addons.palemoon.org/addon/tab-utilities-phoenix/"
             buttons="accept,cancel,extra1,extra2"
             buttonlabelcancel="&prefwindow.close;"
             buttonlabelextra1="&prefwindow.apply;"

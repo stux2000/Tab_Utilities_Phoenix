@@ -4,7 +4,7 @@
     <em:id>tabutils@angrydroid.com</em:id>
     <em:type>2</em:type>
     <em:name>Tab Utilities Phoenix</em:name>
-    <em:version>2.0.4</em:version>
+    <em:version>2.1.0</em:version>
     <em:creator>stux</em:creator>
     <em:contributor>ithinc (Former author)</em:contributor>
     <em:contributor>YFdyh000</em:contributor>
@@ -38,7 +38,7 @@
       <Description>
         <em:id>{8de7fcbb-c55c-4fbe-bfc5-fc555c87dbc4}</em:id> <!-- Pale Moon-->
         <em:minVersion>25.0</em:minVersion>
-        <em:maxVersion>27.*</em:maxVersion>
+        <em:maxVersion>28.*</em:maxVersion>
       </Description>
     </em:targetApplication>
     <em:strictCompatibility>false</em:strictCompatibility>

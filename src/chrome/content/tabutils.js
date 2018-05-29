@@ -30,20 +30,22 @@ var tabutils = {
     window.addEventListener("unload", this, false);
 
     if (typeof gBrowser._tabListeners === "object") { // Bug 1238685 [Fx46]
+      let tabFilters = gBrowser._tabFilters.values().next().value;
       let tabListener = gBrowser._tabListeners.values().next().value;
-      gBrowser.browsers[0].webProgress.removeProgressListener(gBrowser._tabFilters.values().next().value);
-      gBrowser._tabFilters.values().next().value.removeProgressListener(gBrowser._tabListeners.values().next().value);
-      gBrowser._tabListeners.values().next().value = gBrowser.mTabProgressListener(tabListener.mTab, tabListener.mBrowser, tabListener.mBlank);
-      gBrowser._tabFilters.values().next().value.addProgressListener(gBrowser._tabListeners.values().next().value, Ci.nsIWebProgress.NOTIFY_ALL);
-      gBrowser.browsers[0].webProgress.addProgressListener(gBrowser._tabFilters.values().next().value, Ci.nsIWebProgress.NOTIFY_ALL);
+      gBrowser.browsers[0].webProgress.removeProgressListener(tabFilters);
+      tabFilters.removeProgressListener(tabListener);
+      tabListener = gBrowser.mTabProgressListener(tabListener.mTab, tabListener.mBrowser, tabListener.mBlank);
+      tabFilters.addProgressListener(tabListener, Ci.nsIWebProgress.NOTIFY_ALL);
+      gBrowser.browsers[0].webProgress.addProgressListener(tabFilters, Ci.nsIWebProgress.NOTIFY_ALL);
     }
     else if (gBrowser.mTabListeners.length > 0) { // Bug 463384 [Fx5]
+      let tabFilters = gBrowser.mTabFilters[0];
       let tabListener = gBrowser.mTabListeners[0];
-      gBrowser.browsers[0].webProgress.removeProgressListener(gBrowser.mTabFilters[0]);
-      gBrowser.mTabFilters[0].removeProgressListener(gBrowser.mTabListeners[0]);
-      gBrowser.mTabListeners[0] = gBrowser.mTabProgressListener(tabListener.mTab, tabListener.mBrowser, tabListener.mBlank);
-      gBrowser.mTabFilters[0].addProgressListener(gBrowser.mTabListeners[0], Ci.nsIWebProgress.NOTIFY_ALL);
-      gBrowser.browsers[0].webProgress.addProgressListener(gBrowser.mTabFilters[0], Ci.nsIWebProgress.NOTIFY_ALL);
+      gBrowser.browsers[0].webProgress.removeProgressListener(tabFilters);
+      tabFilters.removeProgressListener(tabListener);
+      tabListener = gBrowser.mTabProgressListener(tabListener.mTab, tabListener.mBrowser, tabListener.mBlank);
+      tabFilters.addProgressListener(tabListener, Ci.nsIWebProgress.NOTIFY_ALL);
+      gBrowser.browsers[0].webProgress.addProgressListener(tabFilters, Ci.nsIWebProgress.NOTIFY_ALL);
     }
 
     if (!("privateBrowsingEnabled" in gPrivateBrowsingUI)) { // Bug 799001 [Fx20]
@@ -325,7 +327,7 @@ tabutils._openUILinkInTab = function() {
 
   //地址栏回车键
   TU_hookCode("gURLBar.handleCommand",
-    [/(let altEnter\s*=.+)((aTriggeringEvent)\s*&&\s*(aTriggeringEvent\.altKey)).*;/, function() {
+    [/(let altEnter\s*=.+)\s*((aTriggeringEvent|event)\s*&&\s*(aTriggeringEvent\.altKey|event\.altKey))\s*&&\s*.*isTabEmpty.*;/, function() {
       let newTabPref = TU_getPref('extensions.tabutils.openUrlInTab', true);
       let TU_altEnter = ($2 || newTabPref) && !(($3 ? $4 : false) && newTabPref && TU_getPref('extensions.tabutils.invertAlt', true));
       $1TU_altEnter;
@@ -450,6 +452,22 @@ tabutils._openLinkInTab = function() {
       }
     }
   }).toString().replace(/^.*{|}$/g, "").replace("$0", s));
+  // For Fx51 and earlier
+  
+  // The following edition applies to bug 92737 [Fx52] changes and later.
+  TU_hookCode("handleDroppedLink", /.*urls\.push\([\s\S]*?postData.*/g, function(s) (function() {
+    {
+      switch (true) {
+        case /\.(xpi|user\.js)$/.test(data.url): // Bug 846635 [Fx25]
+        case !TU_getPref("extensions.tabutils.dragAndGo", true):
+          $0;break;
+        case event.ctrlKey != TU_getPref("extensions.tabutils.invertDrag", false):
+          BrowserSearch.loadSearch(name || link.url, true);break;
+        default:
+          openNewTabWith(data.url, null, data.postData, event, true);break; // ", event.target.ownerDocument.documentURIObject" will break for example drop an local file (file:///) to about:newtab page, blocked for security reasons.
+      }
+    }
+  }).toString().replace(/^.*{|}$/g, "").replace("$0", s));
 
   for (let b of gBrowser.browsers) {
     b.droppedLinkHandler = handleDroppedLink;
@@ -486,7 +504,7 @@ tabutils._singleWindowMode = function() {
 
     if (win) {
       TU_hookFunc((gBrowserInit.onLoad + gBrowserInit._delayedStartup).toString().match(/^.*{|if \(uriToLoad.*{([^{}]|{[^{}]*}|{([^{}]|{[^{}]*})*})*}|}$/g).join("\n"), // Bug 756313 [Fx19]
-        ["{", "var uriToLoad = window.arguments && window.arguments[0];"],
+        ["{", "var uriToLoad = {window.arguments && window.arguments[0]};"],
         ["gBrowser.loadTabs(specs, false, true);", "this.gBrowser.loadTabs(specs, false, false);"],
         ["loadOneOrMoreURIs(uriToLoad);", "this.gBrowser.loadTabs(uriToLoad.split('|'), false, false);"],
         [/.*loadURI.*\n.*/, "this.gBrowser.loadOneTab(uriToLoad, window.arguments[2], window.arguments[1] && window.arguments[1].split('=')[1], window.arguments[3] || null, false, window.arguments[4] || false);"],
@@ -510,7 +528,8 @@ tabutils._singleWindowMode = function() {
   };
 
   TU_hookCode("OpenBrowserWindow", "{", function() {
-    if (TU_getPref("extensions.tabutils.singleWindowMode", false))
+    if (TU_getPref("extensions.tabutils.singleWindowMode", false)
+       && typeof options != "object") // .remote for non-e10s; .private (window)
       return BrowserOpenTab() || gBrowser.getLastOpenedTab();
   });
 
@@ -573,9 +592,10 @@ tabutils._tabOpeningOptions = function() {
         }
       }
     }).toString().replace(/^.*{|}$/g, "")],
-    [/(?=return t;)/, gBrowser.addTab.toString().match(/var (uriIsBlankPage|uriIsNotAboutBlank|uriIsAboutBlank).*|let (docShellsSwapped|usingPreloadedContent)[\s\S]*(?=\n.*(docShellsSwapped|usingPreloadedContent).*)|if \((uriIsNotAboutBlank|.*uriIsAboutBlank)\) {([^{}]|{[^{}]*})*}/g).join("\n")] // Bug 716108 [Fx16], Bug 1077652 [Fx37]
-  );
-
+    [/(?=return t;)/, gBrowser.addTab.toString().match(
+      /var (?:uriIsBlankPage|uriIsNotAboutBlank|uriIsAboutBlank).*|let (?:options|browserParams) = \{[\s\S]*?dispatchEvent.+;|if.+!usingPreloadedContent[\s\S]*catch[^}]+?\}[^}]+?\}|let (docShellsSwapped|usingPreloadedContent)[\s\S]*(?=\n.*(docShellsSwapped|usingPreloadedContent).*)|if \((uriIsNotAboutBlank|.*uriIsAboutBlank)\) {([^{}]|{[^{}]*})*}/g
+      ).join("\n").replace(/(?:var|let) b\s*=/, "b =")]
+  ); // Bug 716108 [Fx16], Bug 1077652 [Fx37], Bug 1243707 [Fx48], etc. Grab all about preload tab, open tab, barring select tab.
   gBrowser.getBlankTab = function getBlankTab() {
     var reuseBlank = TU_getPref("extensions.tabutils.reuseBlank", 1);
     return reuseBlank & 1 && this.isBlankTab(this.mCurrentTab) ? this.mCurrentTab :
@@ -651,7 +671,7 @@ tabutils._tabOpeningOptions = function() {
   //在当前标签页的右侧打开新标签页
   //连续打开后台标签时保持原有顺序
   TU_hookCode("gBrowser.addTab",
-    [/\S*insertRelatedAfterCurrent\S*(?=\))/, "false"],
+    [/\S*insertRelatedAfterCurrent\S*(?=\))/, "false"], // replace "getBoolPref("browser.tabs.insertRelatedAfterCurrent")"
     [/(?=(return t;)(?![\s\S]*\1))/, function() {
       if (t.hasAttribute("opener")) {
         function shouldStack(tab) { let args = tab.arguments; return args.aReferrerURI || args.aRelatedToCurrent && args.aURI != "about:blank"; }
@@ -704,10 +724,11 @@ tabutils._tabOpeningOptions = function() {
   if (BrowserOpenTab.name == "BrowserOpenTab") { //Compatibility with Speed Dial
     TU_hookCode("BrowserOpenTab",
       [/.*openUILinkIn\((.*)\)/, function(s, s1) s.replace(s1, (
+        s1 = s1.replace(/,\s*\{\s*relatedToCurrent\s*\}/, ""),
         s1 = s1.split(","),
         s1.push("{inBackground: TU_getPref('extensions.tabutils.loadNewInBackground', false)}"),
         s1.push("{relatedToCurrent: TU_getPref('extensions.tabutils.openTabNext', 1) == 1}"),
-        s1.join().replace("},{", ",")
+        s1.join().replace(/\}\s*,\s*\{/, ",")
       ))] // Bug 490225 [Fx11]
     );
   }
@@ -1401,7 +1422,7 @@ tabutils._renameTab = function() {
 
   TU_hookCode("gBrowser.loadTabs",
     ["{", "var lastArg = Object(arguments[arguments.length - 1]), aTitles = TU_getPref('extensions.tabutils.titleAsBookmark', false) ? lastArg.titles : null;"],
-    [/(\w+) = .*addTab.*\[(.*)\].*/g, function(s, s1, s2) (function() {
+    [/(\w+) = .*addTab.*\[(.*)\][\s\S]*?\}\);/g, function(s, s1, s2) (function() {
       $0
       if (aTitles && aTitles[$2])
         $1.setAttribute("title", aTitles[$2]);
@@ -1625,6 +1646,7 @@ tabutils._bookmarkTabs = function() {
   );
   }
 
+  if (!("abHere2" in window)) { // Compatibility with Add Bookmark Here ²
   TU_hookCode("PlacesCommandHook.bookmarkCurrentPages",
     ["this.uniqueCurrentPages", (function() {
       !gPrivateBrowsingUI.privateBrowsingEnabled && TU_getPref("extensions.tabutils.bookmarkAllWithHistory", true) ?
@@ -1633,6 +1655,7 @@ tabutils._bookmarkTabs = function() {
     }).toString().replace(/^.*{|}$/g, "")],
     ["pages.length > 1", "true"]
   );
+  }
 
   //Highlight bookmarks with history
   TU_hookCode("PlacesViewBase.prototype._createMenuItemForPlacesNode", /(?=return element;)/, function() {
@@ -1658,7 +1681,7 @@ tabutils._bookmarkTabs = function() {
 
   TU_hookCode("gBrowser.loadTabs",
     ["{", "var lastArg = Object(arguments[arguments.length - 1]), aItemIds = lastArg.itemIds;"],
-    [/(\w+) = .*addTab.*\[(.*)\].*/g, function(s, s1, s2) (function() {
+    [/(\w+) = .*addTab.*\[(.*)\][\s\S]*?\}\);/g, function(s, s1, s2) (function() {
       $0
       if (aItemIds && aItemIds[$2] && PlacesUtils.annotations.itemHasAnnotation(aItemIds[$2], "bookmarkProperties/tabState")) {
         $1.linkedBrowser.stop();
@@ -1904,7 +1927,7 @@ tabutils._multiTabHandler = function() {
     }
   }, true);
 
-  TU_hookCode(typeof gBrowser.mTabContainer._setEffectAllowedForDataTransfer === 'function' ? 
+  TU_hookCode(typeof gBrowser.mTabContainer._setEffectAllowedForDataTransfer === 'function' ?
     "gBrowser.mTabContainer._setEffectAllowedForDataTransfer" : // Firefox 43 and older
     "gBrowser.mTabContainer._getDropEffectForTabDrag", // Firefox 44 and later
     ["dt.mozItemCount > 1", "false"]
@@ -2351,9 +2374,13 @@ tabutils._tabClickingOptions = function() {
   }, false);
 
   //Mouse scroll to select
-  tabutils.addEventListener(gBrowser.mTabContainer, 'DOMMouseScroll', function(event) {
+  tabutils.addEventListener(gBrowser.mTabContainer, 'wheel', function(event) {
+    let isVertical = Math.abs(event.deltaY) > Math.abs(event.deltaX);
+    let delta = isVertical ? event.deltaY : event.deltaX;
+    let scrollByDelta = isVertical && this._isRTLScrollbox ? -delta : delta;
     if (event.ctrlKey) {
-      document.getElementById(event.detail < 0 ? "cmd_prevGroup" : "cmd_nextGroup").doCommand();
+      document.getElementById(scrollByDelta < 0 ? "cmd_prevGroup" : "cmd_nextGroup").doCommand();
+      event.preventDefault();
       event.stopPropagation();
       return;
     }
@@ -2361,8 +2388,9 @@ tabutils._tabClickingOptions = function() {
     if (event.originalTarget != this.mTabstrip._scrollButtonUp &&
         event.originalTarget != this.mTabstrip._scrollButtonDown &&
         TU_getPref("extensions.tabutils.mouseScrollSelect", false)) {
-      let scrollDir = event.detail < 0 ^ TU_getPref("extensions.tabutils.mouseScrollSelectDir", false) ? -1 : 1;
+      let scrollDir = scrollByDelta < 0 ^ TU_getPref("extensions.tabutils.mouseScrollSelectDir", false) ? -1 : 1;
       this.advanceSelectedTab(scrollDir, TU_getPref("extensions.tabutils.mouseScrollSelectWrap", false));
+      event.preventDefault();
       event.stopPropagation();
     }
   }, true);
@@ -2474,35 +2502,34 @@ tabutils._miscFeatures = function() {
 
 //浏览区右键菜单
 tabutils._mainContextMenu = function() {
-  nsContextMenu.prototype.isLinkSelected = function() {
-    var focusedWindow = document.commandDispatcher.focusedWindow;
-    if (!focusedWindow || focusedWindow == window)
-      focusedWindow = window.content;
-
-    var links = focusedWindow.document.links;
-    var selection = focusedWindow.getSelection();
-    if (!links || !selection)
-      return false;
-
-    this.linkURLs = [];
-    for (let link of links) {
-      if (selection.containsNode(link, true) && (link.offsetHeight > 0) && this.linkURLs.indexOf(link.href) == -1)
-        this.linkURLs.push(link.href);
+  var TUF_LinksSelected = []; // due to an call in that "listener".
+  nsContextMenu.prototype.checkLinkSelected = function() {
+    //console.time('getLinkSelected');
+    messageManager.addMessageListener("tabutils-fixed:LinksSelected", listener);
+    function listener(message) {
+      //console.dir(message);
+      let linkURLs = message.data.links;
+      TUF_LinksSelected = linkURLs;
+      let item = document.getElementById("context-openselectedlinksintab");
+      item.setAttribute("label", item.getAttribute("label").replace(/\d*(?=])/, linkURLs.length));
+      item.setAttribute("hidden", linkURLs.length > 1 ? "" : "true");
+      //console.timeEnd('getLinkSelected');
     }
-
-    var item = document.getElementById("context-openselectedlinksintab");
-    item.setAttribute("label", item.getAttribute("label").replace(/\d*(?=])/, this.linkURLs.length));
-
-    return this.linkURLs.length > 1;
+    let browserMM = gBrowser.selectedBrowser.messageManager;
+    browserMM.loadFrameScript('chrome://tabutils/content/content.js', true);
   };
 
   nsContextMenu.prototype.openSelectedLinksInTab = function() {
-    this.linkURLs.forEach(function(aURL) openNewTabWith(aURL, this.target.ownerDocument, null, null, false), this);
+    gBrowser.loadTabs(TUF_LinksSelected);
   };
 
   //TU_hookCode("nsContextMenu.prototype.initOpenItems", /.*openlinkincurrent.*/, function(s) s.replace("onPlainTextLink", "shouldShow"));
   TU_hookCode("nsContextMenu.prototype.initOpenItems", "}", function() {
-    this.showItem("context-openselectedlinksintab", this.isLinkSelected());
+    this.checkLinkSelected();
+  });
+  TU_hookCode("nsContextMenu.prototype.hiding", "}", function() {
+    let item = document.getElementById("context-openselectedlinksintab");
+    item.setAttribute("hidden", true);
   });
 };
 
@@ -2954,7 +2981,7 @@ tabutils._tabPrefObserver = {
     '.alltabs-item#Selector#'
   ].join(),
   textSelector: [
-    '.tabbrowser-tab#Selector# > * > .tab-content > .tab-text',
+    '.tabbrowser-tab#Selector# > * > .tab-content .tab-text',
     '.alltabs-item#Selector#'
   ].join(),
   bgSelector: [
@@ -3100,7 +3127,7 @@ tabutils._tabPrefObserver = {
       if (!button) {
         button = document.getElementById("nav-bar").appendChild(document.createElement("toolbarbutton"));
         button.id = RegExp.$1;
-        const FaviconService = Cc["@mozilla.org/browser/favicon-service;1"].            getService(Ci.nsIFaviconService);        
+        const FaviconService = Cc["@mozilla.org/browser/favicon-service;1"].            getService(Ci.nsIFaviconService);
         button.image = FaviconService.defaultFavicon.spec;
         button.className = "toolbarbutton-1 chromeclass-toolbar-additional";
         button.collapsed = !TU_getPref("extensions.tabutils.button." + RegExp.$1);
